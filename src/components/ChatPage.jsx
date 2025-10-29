@@ -6,7 +6,8 @@ export default function ChatPage() {
   const [chatHistory, setChatHistory] = useState([
     {
       from: "ai",
-      text: "Hello! How can I assist you today? You can ask me about your students' progress, learning resources, or any educational questions you have.",
+      text:
+        "Hello! How can I assist you today? You can ask me about your students' progress, learning resources, or any educational questions you have.",
     },
   ]);
   const [isTyping, setIsTyping] = useState(false);
@@ -14,20 +15,45 @@ export default function ChatPage() {
   async function sendMessage() {
     if (!message.trim()) return;
 
+    // Push user message
     setChatHistory((prev) => [...prev, { from: "user", text: message }]);
     setIsTyping(true);
 
     try {
-      const response = await fetch("http://localhost:5000/api/chat", {
+      // Build backend payload
+      const payload = {
+        query: message,
+        student_id: "STU12345",
+        top_k: 5,
+        record_type: "",
+        mode, // if your backend needs it; harmless if ignored
+      };
+
+      // Call new backend
+      const response = await fetch("http://localhost:8001/api/query", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message, mode }),
+        body: JSON.stringify(payload),
       });
-      const data = await response.json();
 
-      setChatHistory((prev) => [...prev, { from: "ai", text: data.reply }]);
+      // Robust JSON handling
+      const contentType = response.headers.get("content-type") || "";
+      const data = contentType.includes("application/json")
+        ? await response.json()
+        : {};
+
+      // Your backend returns the summary; use fallback if structure differs
+      const aiReply =
+        data?.summary ||
+        data?.reply ||
+        "No summary available for the current query.";
+
+      setChatHistory((prev) => [...prev, { from: "ai", text: aiReply }]);
     } catch (err) {
-      setChatHistory((prev) => [...prev, { from: "ai", text: "Error: Unable to get response." }]);
+      setChatHistory((prev) => [
+        ...prev,
+        { from: "ai", text: "Error: Unable to get response." },
+      ]);
     } finally {
       setIsTyping(false);
       setMessage("");
@@ -35,6 +61,7 @@ export default function ChatPage() {
   }
 
   function handleKeyDown(e) {
+    // Enter to send, Shift+Enter for newline
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       sendMessage();
@@ -49,7 +76,8 @@ export default function ChatPage() {
           AI Assistant
         </h1>
         <p className="text-sm md:text-base text-gray-600">
-          Your intelligent companion for tracking educational progress and insights.
+          Your intelligent companion for tracking educational progress and
+          insights.
         </p>
       </div>
 
@@ -82,11 +110,19 @@ export default function ChatPage() {
         {chatHistory.map((msg, index) => (
           <div
             key={index}
-            className={`flex items-start gap-2 md:gap-3 ${msg.from === "user" ? "justify-end" : "justify-start"}`}
+            className={`flex items-start gap-2 md:gap-3 ${
+              msg.from === "user" ? "justify-end" : "justify-start"
+            }`}
           >
             {msg.from === "ai" && (
               <div className="rounded-xl bg-gradient-to-br from-orange-500 to-pink-600 h-8 w-8 md:h-10 md:w-10 flex-shrink-0 flex items-center justify-center text-white shadow-md">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" className="md:w-5 md:h-5">
+                <svg
+                  width="16"
+                  height="16"
+                  viewBox="0 0 24 24"
+                  fill="currentColor"
+                  className="md:w-5 md:h-5"
+                >
                   <circle cx="7" cy="7" r="2" />
                   <circle cx="17" cy="7" r="2" />
                   <circle cx="7" cy="17" r="2" />
@@ -112,10 +148,17 @@ export default function ChatPage() {
             )}
           </div>
         ))}
+
         {isTyping && (
           <div className="flex gap-2 md:gap-3 items-start">
             <div className="rounded-xl bg-gradient-to-br from-orange-500 to-pink-600 h-8 w-8 md:h-10 md:w-10 flex-shrink-0 flex items-center justify-center text-white shadow-md">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" className="md:w-5 md:h-5">
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="currentColor"
+                className="md:w-5 md:h-5"
+              >
                 <circle cx="7" cy="7" r="2" />
                 <circle cx="17" cy="7" r="2" />
                 <circle cx="7" cy="17" r="2" />
@@ -123,22 +166,39 @@ export default function ChatPage() {
               </svg>
             </div>
             <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-md px-3 py-3 md:px-5 md:py-4 flex gap-1.5 border border-white">
-              <span className="w-2 h-2 bg-orange-500 rounded-full animate-bounce" style={{ animationDelay: "0ms" }}></span>
-              <span className="w-2 h-2 bg-pink-500 rounded-full animate-bounce" style={{ animationDelay: "150ms" }}></span>
-              <span className="w-2 h-2 bg-orange-500 rounded-full animate-bounce" style={{ animationDelay: "300ms" }}></span>
+              <span
+                className="w-2 h-2 bg-orange-500 rounded-full animate-bounce"
+                style={{ animationDelay: "0ms" }}
+              ></span>
+              <span
+                className="w-2 h-2 bg-pink-500 rounded-full animate-bounce"
+                style={{ animationDelay: "150ms" }}
+              ></span>
+              <span
+                className="w-2 h-2 bg-orange-500 rounded-full animate-bounce"
+                style={{ animationDelay: "300ms" }}
+              ></span>
             </div>
           </div>
         )}
       </div>
 
-      {/* Input Bar - Perplexity Style */}
+      {/* Input Bar */}
       <div className="bg-white/90 backdrop-blur-md border border-orange-200 rounded-xl md:rounded-2xl shadow-lg flex items-end">
         {/* Left Side - Attach Button */}
-        <button 
-          className="p-2.5 md:p-3 text-gray-400 hover:text-orange-600 hover:bg-orange-50 rounded-l-xl md:rounded-l-2xl transition-all duration-300 flex-shrink-0" 
+        <button
+          className="p-2.5 md:p-3 text-gray-400 hover:text-orange-600 hover:bg-orange-50 rounded-l-xl md:rounded-l-2xl transition-all duration-300 flex-shrink-0"
           title="Attach file"
+          type="button"
         >
-          <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5">
+          <svg
+            width="20"
+            height="20"
+            viewBox="0 0 20 20"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.5"
+          >
             <path d="M14 7v5a4 4 0 01-8 0V5a3 3 0 016 0v7a2 2 0 01-4 0V7" />
           </svg>
         </button>
@@ -155,11 +215,19 @@ export default function ChatPage() {
 
         {/* Right Side - Voice & Send Buttons */}
         <div className="flex items-center gap-1 pr-2 md:pr-3">
-          <button 
-            className="p-2 md:p-2.5 text-gray-400 hover:text-orange-600 hover:bg-orange-50 rounded-lg transition-all duration-300 flex-shrink-0" 
+          <button
+            className="p-2 md:p-2.5 text-gray-400 hover:text-orange-600 hover:bg-orange-50 rounded-lg transition-all duration-300 flex-shrink-0"
             title="Voice input"
+            type="button"
           >
-            <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5">
+            <svg
+              width="20"
+              height="20"
+              viewBox="0 0 20 20"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.5"
+            >
               <rect x="8" y="2" width="4" height="10" rx="2" />
               <path d="M5 9v1a5 5 0 0010 0V9" />
               <line x1="10" y1="15" x2="10" y2="18" />
@@ -171,10 +239,11 @@ export default function ChatPage() {
             disabled={!message.trim()}
             className={`p-2 md:p-2.5 rounded-lg transition-all duration-300 flex-shrink-0 ${
               message.trim()
-                ? 'bg-gradient-to-r from-orange-600 to-pink-600 hover:from-orange-700 hover:to-pink-700 text-white shadow-md hover:shadow-lg'
-                : 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                ? "bg-gradient-to-r from-orange-600 to-pink-600 hover:from-orange-700 hover:to-pink-700 text-white shadow-md hover:shadow-lg"
+                : "bg-gray-200 text-gray-400 cursor-not-allowed"
             }`}
             title="Send message"
+            type="button"
           >
             <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor">
               <path d="M2 2l16 8-16 8V11l11-1-11-1V2z" />
