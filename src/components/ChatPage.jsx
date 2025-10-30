@@ -7,7 +7,7 @@ const API_CONFIG = {
   START_DATE: "", // Empty string for no date filter
   END_DATE: "", // Empty string for no date filter
   RECORD_TYPE: "", // Empty string for all record types
-  BASE_URL: "https://c21a61a3e119.ngrok-free.app",
+  BASE_URL: "https://c21a61a3e119.ngrok-free.app", // Replace with your backend URL
 };
 
 export default function ChatPage() {
