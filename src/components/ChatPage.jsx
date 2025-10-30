@@ -1,4 +1,14 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
+
+// Hardcoded configuration constants
+const API_CONFIG = {
+  STUDENT_ID: "STU12345",
+  TOP_K: 5,
+  START_DATE: "", // Empty string for no date filter
+  END_DATE: "", // Empty string for no date filter
+  RECORD_TYPE: "", // Empty string for all record types
+  BASE_URL: "https://c21a61a3e119.ngrok-free.app",
+};
 
 export default function ChatPage() {
   const [mode, setMode] = useState("simple");
@@ -6,8 +16,8 @@ export default function ChatPage() {
   const [chatHistory, setChatHistory] = useState([
     {
       from: "ai",
-      text:
-        "Hello! How can I assist you today? You can ask me about your students' progress, learning resources, or any educational questions you have.",
+      text: "Hello! How can I assist you today? You can ask me about your students' progress, learning resources, or any educational questions you have.",
+      isHtml: false,
     },
   ]);
   const [isTyping, setIsTyping] = useState(false);
@@ -15,44 +25,92 @@ export default function ChatPage() {
   async function sendMessage() {
     if (!message.trim()) return;
 
-    // Push user message
-    setChatHistory((prev) => [...prev, { from: "user", text: message }]);
+    setChatHistory((prev) => [
+      ...prev,
+      { from: "user", text: message, isHtml: false },
+    ]);
     setIsTyping(true);
 
     try {
-      // Build backend payload
       const payload = {
         query: message,
-        student_id: "STU12345",
-        top_k: 5,
-        record_type: "",
-        mode, // if your backend needs it; harmless if ignored
+        student_id: API_CONFIG.STUDENT_ID,
+        top_k: API_CONFIG.TOP_K,
+        start_date: API_CONFIG.START_DATE,
+        end_date: API_CONFIG.END_DATE,
+        record_type: API_CONFIG.RECORD_TYPE,
       };
 
-      // Call new backend
-      const response = await fetch("http://localhost:8001/api/query", {
+      console.log("Sending request to:", `${API_CONFIG.BASE_URL}/api/query`);
+      console.log("Payload:", payload);
+
+      const response = await fetch(`${API_CONFIG.BASE_URL}/api/query`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+        },
         body: JSON.stringify(payload),
       });
 
-      // Robust JSON handling
+      console.log("Response status:", response.status);
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
       const contentType = response.headers.get("content-type") || "";
-      const data = contentType.includes("application/json")
-        ? await response.json()
-        : {};
 
-      // Your backend returns the summary; use fallback if structure differs
-      const aiReply =
-        data?.summary ||
-        data?.reply ||
-        "No summary available for the current query.";
+      // Handle JSON response
+      if (contentType.includes("application/json")) {
+        const data = await response.json();
+        console.log("Received data:", data);
 
-      setChatHistory((prev) => [...prev, { from: "ai", text: aiReply }]);
+        const aiReply = data?.summary || data?.reply || "No summary available.";
+
+        // Check if the summary contains HTML
+        const isHtmlResponse = /<[a-z][\s\S]*>/i.test(aiReply);
+
+        setChatHistory((prev) => [
+          ...prev,
+          {
+            from: "ai",
+            text: aiReply,
+            isHtml: isHtmlResponse,
+          },
+        ]);
+      } else if (contentType.includes("text/html")) {
+        // Fallback for HTML responses
+        const htmlContent = await response.text();
+
+        setChatHistory((prev) => [
+          ...prev,
+          {
+            from: "ai",
+            text: htmlContent,
+            isHtml: true,
+          },
+        ]);
+      } else {
+        // Handle other content types
+        const textContent = await response.text();
+        setChatHistory((prev) => [
+          ...prev,
+          {
+            from: "ai",
+            text: textContent,
+            isHtml: false,
+          },
+        ]);
+      }
     } catch (err) {
+      console.error("Detailed error:", err);
       setChatHistory((prev) => [
         ...prev,
-        { from: "ai", text: "Error: Unable to get response." },
+        {
+          from: "ai",
+          text: `Error: ${err.message}. Please check the console for details and make sure the backend is running on ${API_CONFIG.BASE_URL}.`,
+          isHtml: false,
+        },
       ]);
     } finally {
       setIsTyping(false);
@@ -61,15 +119,71 @@ export default function ChatPage() {
   }
 
   function handleKeyDown(e) {
-    // Enter to send, Shift+Enter for newline
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       sendMessage();
     }
   }
 
+  // Component to render HTML with embedded styles in iframe
+  const HtmlRenderer = ({ htmlContent, messageId }) => {
+    const iframeRef = useRef(null);
+
+    useEffect(() => {
+      if (iframeRef.current) {
+        const iframe = iframeRef.current;
+        const doc = iframe.contentDocument || iframe.contentWindow.document;
+        doc.open();
+        doc.write(htmlContent);
+        doc.close();
+
+        // Auto-adjust iframe height after content loads
+        const adjustHeight = () => {
+          try {
+            const body = doc.body;
+            const html = doc.documentElement;
+            const height = Math.max(
+              body.scrollHeight,
+              body.offsetHeight,
+              html.clientHeight,
+              html.scrollHeight,
+              html.offsetHeight
+            );
+            iframe.style.height = height + 40 + "px"; // Add padding
+          } catch (e) {
+            iframe.style.height = "800px";
+          }
+        };
+
+        // Multiple timeouts to catch dynamic content loading
+        setTimeout(adjustHeight, 100);
+        setTimeout(adjustHeight, 500);
+        setTimeout(adjustHeight, 1000);
+        setTimeout(adjustHeight, 2000);
+
+        // Listen for images loading
+        const images = doc.getElementsByTagName("img");
+        if (images.length > 0) {
+          Array.from(images).forEach((img) => {
+            img.addEventListener("load", adjustHeight);
+          });
+        }
+      }
+    }, [htmlContent]);
+
+    return (
+      <iframe
+        ref={iframeRef}
+        className="w-full border-0 rounded-lg bg-white"
+        sandbox="allow-same-origin allow-scripts"
+        title={`HTML Response ${messageId}`}
+        style={{ minHeight: "600px" }}
+      />
+    );
+  };
+
   return (
-    <div className="flex flex-col w-full h-full max-w-4xl mx-auto">
+    <div className="flex flex-col w-full h-full max-w-6xl mx-auto">
       {/* Header */}
       <div className="mb-4 md:mb-6 px-2 md:px-0">
         <h1 className="text-3xl md:text-4xl font-bold bg-gradient-to-r from-orange-600 to-pink-600 bg-clip-text text-transparent mb-2">
@@ -131,13 +245,21 @@ export default function ChatPage() {
               </div>
             )}
             <div
-              className={`rounded-2xl shadow-md px-3 py-2.5 md:px-5 md:py-3.5 text-xs md:text-sm max-w-[75%] md:max-w-2xl whitespace-pre-wrap ${
+              className={`rounded-2xl shadow-md overflow-hidden ${
                 msg.from === "user"
-                  ? "bg-gradient-to-r from-orange-600 to-pink-600 text-white font-medium"
-                  : "bg-white/80 backdrop-blur-sm text-gray-800 border border-white"
+                  ? "bg-gradient-to-r from-orange-600 to-pink-600 text-white font-medium px-3 py-2.5 md:px-5 md:py-3.5 text-xs md:text-sm max-w-[75%] md:max-w-2xl"
+                  : msg.isHtml
+                  ? "bg-transparent border-0 p-0 w-full max-w-full"
+                  : "bg-white/80 backdrop-blur-sm text-gray-800 border border-white px-3 py-2.5 md:px-5 md:py-3.5 text-xs md:text-sm max-w-[75%] md:max-w-2xl"
               }`}
             >
-              {msg.text}
+              {msg.from === "user" ? (
+                <div className="whitespace-pre-wrap">{msg.text}</div>
+              ) : msg.isHtml ? (
+                <HtmlRenderer htmlContent={msg.text} messageId={index} />
+              ) : (
+                <div className="whitespace-pre-wrap">{msg.text}</div>
+              )}
             </div>
             {msg.from === "user" && (
               <img
@@ -185,7 +307,6 @@ export default function ChatPage() {
 
       {/* Input Bar */}
       <div className="bg-white/90 backdrop-blur-md border border-orange-200 rounded-xl md:rounded-2xl shadow-lg flex items-end">
-        {/* Left Side - Attach Button */}
         <button
           className="p-2.5 md:p-3 text-gray-400 hover:text-orange-600 hover:bg-orange-50 rounded-l-xl md:rounded-l-2xl transition-all duration-300 flex-shrink-0"
           title="Attach file"
@@ -203,7 +324,6 @@ export default function ChatPage() {
           </svg>
         </button>
 
-        {/* Center - Text Area */}
         <textarea
           className="flex-1 min-w-0 bg-transparent px-2 py-3 md:px-3 md:py-3.5 outline-none text-gray-800 placeholder-gray-400 text-sm md:text-base resize-none max-h-24 md:max-h-32"
           placeholder="Ask anything..."
@@ -213,7 +333,6 @@ export default function ChatPage() {
           rows={1}
         />
 
-        {/* Right Side - Voice & Send Buttons */}
         <div className="flex items-center gap-1 pr-2 md:pr-3">
           <button
             className="p-2 md:p-2.5 text-gray-400 hover:text-orange-600 hover:bg-orange-50 rounded-lg transition-all duration-300 flex-shrink-0"
