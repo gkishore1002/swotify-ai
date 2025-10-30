@@ -1,13 +1,12 @@
 import { useState, useEffect, useRef } from "react";
 
-// Hardcoded configuration constants
 const API_CONFIG = {
   STUDENT_ID: "STU12345",
   TOP_K: 5,
-  START_DATE: "", // Empty string for no date filter
-  END_DATE: "", // Empty string for no date filter
-  RECORD_TYPE: "", // Empty string for all record types
-  BASE_URL: "https://c21a61a3e119.ngrok-free.app", // Replace with your backend URL
+  START_DATE: "",
+  END_DATE: "",
+  RECORD_TYPE: "",
+  BASE_URL: "http://localhost:8001",
 };
 
 export default function ChatPage() {
@@ -21,6 +20,24 @@ export default function ChatPage() {
     },
   ]);
   const [isTyping, setIsTyping] = useState(false);
+
+  function cleanHtmlContent(content) {
+    let cleaned = content.trim();
+    
+    if (cleaned.startsWith("```html")) {
+      cleaned = cleaned.slice(7);
+    }
+    
+    if (cleaned.startsWith("```")) {
+      cleaned = cleaned.slice(3);
+    }
+    
+    if (cleaned.endsWith("```")) {
+      cleaned = cleaned.slice(0, -3);
+    }
+    
+    return cleaned.trim();
+  }
 
   async function sendMessage() {
     if (!message.trim()) return;
@@ -41,9 +58,6 @@ export default function ChatPage() {
         record_type: API_CONFIG.RECORD_TYPE,
       };
 
-      console.log("Sending request to:", `${API_CONFIG.BASE_URL}/api/query`);
-      console.log("Payload:", payload);
-
       const response = await fetch(`${API_CONFIG.BASE_URL}/api/query`, {
         method: "POST",
         headers: {
@@ -52,23 +66,20 @@ export default function ChatPage() {
         body: JSON.stringify(payload),
       });
 
-      console.log("Response status:", response.status);
-
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
 
       const contentType = response.headers.get("content-type") || "";
 
-      // Handle JSON response
       if (contentType.includes("application/json")) {
         const data = await response.json();
-        console.log("Received data:", data);
-
-        const aiReply = data?.summary || data?.reply || "No summary available.";
-
-        // Check if the summary contains HTML
+        let aiReply = data?.summary || data?.reply || "No summary available.";
         const isHtmlResponse = /<[a-z][\s\S]*>/i.test(aiReply);
+
+        if (isHtmlResponse) {
+          aiReply = cleanHtmlContent(aiReply);
+        }
 
         setChatHistory((prev) => [
           ...prev,
@@ -79,8 +90,8 @@ export default function ChatPage() {
           },
         ]);
       } else if (contentType.includes("text/html")) {
-        // Fallback for HTML responses
-        const htmlContent = await response.text();
+        let htmlContent = await response.text();
+        htmlContent = cleanHtmlContent(htmlContent);
 
         setChatHistory((prev) => [
           ...prev,
@@ -91,7 +102,6 @@ export default function ChatPage() {
           },
         ]);
       } else {
-        // Handle other content types
         const textContent = await response.text();
         setChatHistory((prev) => [
           ...prev,
@@ -103,12 +113,12 @@ export default function ChatPage() {
         ]);
       }
     } catch (err) {
-      console.error("Detailed error:", err);
+      console.error("Error:", err);
       setChatHistory((prev) => [
         ...prev,
         {
           from: "ai",
-          text: `Error: ${err.message}. Please check the console for details and make sure the backend is running on ${API_CONFIG.BASE_URL}.`,
+          text: `Error: ${err.message}`,
           isHtml: false,
         },
       ]);
@@ -125,7 +135,6 @@ export default function ChatPage() {
     }
   }
 
-  // Component to render HTML with embedded styles in iframe
   const HtmlRenderer = ({ htmlContent, messageId }) => {
     const iframeRef = useRef(null);
 
@@ -137,7 +146,6 @@ export default function ChatPage() {
         doc.write(htmlContent);
         doc.close();
 
-        // Auto-adjust iframe height after content loads
         const adjustHeight = () => {
           try {
             const body = doc.body;
@@ -149,19 +157,17 @@ export default function ChatPage() {
               html.scrollHeight,
               html.offsetHeight
             );
-            iframe.style.height = height + 40 + "px"; // Add padding
+            iframe.style.height = height + 40 + "px";
           } catch (e) {
             iframe.style.height = "800px";
           }
         };
 
-        // Multiple timeouts to catch dynamic content loading
         setTimeout(adjustHeight, 100);
         setTimeout(adjustHeight, 500);
         setTimeout(adjustHeight, 1000);
         setTimeout(adjustHeight, 2000);
 
-        // Listen for images loading
         const images = doc.getElementsByTagName("img");
         if (images.length > 0) {
           Array.from(images).forEach((img) => {
@@ -184,18 +190,15 @@ export default function ChatPage() {
 
   return (
     <div className="flex flex-col w-full h-full max-w-6xl mx-auto">
-      {/* Header */}
       <div className="mb-4 md:mb-6 px-2 md:px-0">
         <h1 className="text-3xl md:text-4xl font-bold bg-gradient-to-r from-orange-600 to-pink-600 bg-clip-text text-transparent mb-2">
           AI Assistant
         </h1>
         <p className="text-sm md:text-base text-gray-600">
-          Your intelligent companion for tracking educational progress and
-          insights.
+          Your intelligent companion for tracking educational progress and insights.
         </p>
       </div>
 
-      {/* Mode Switch */}
       <div className="flex justify-center gap-2 mb-4 md:mb-6 px-2">
         <button
           onClick={() => setMode("simple")}
@@ -219,7 +222,6 @@ export default function ChatPage() {
         </button>
       </div>
 
-      {/* Chat Messages */}
       <div className="flex flex-col gap-3 md:gap-4 mb-4 md:mb-6 flex-1 overflow-y-auto px-2 md:px-2 pb-2">
         {chatHistory.map((msg, index) => (
           <div
@@ -230,13 +232,7 @@ export default function ChatPage() {
           >
             {msg.from === "ai" && (
               <div className="rounded-xl bg-gradient-to-br from-orange-500 to-pink-600 h-8 w-8 md:h-10 md:w-10 flex-shrink-0 flex items-center justify-center text-white shadow-md">
-                <svg
-                  width="16"
-                  height="16"
-                  viewBox="0 0 24 24"
-                  fill="currentColor"
-                  className="md:w-5 md:h-5"
-                >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" className="md:w-5 md:h-5">
                   <circle cx="7" cy="7" r="2" />
                   <circle cx="17" cy="7" r="2" />
                   <circle cx="7" cy="17" r="2" />
@@ -274,13 +270,7 @@ export default function ChatPage() {
         {isTyping && (
           <div className="flex gap-2 md:gap-3 items-start">
             <div className="rounded-xl bg-gradient-to-br from-orange-500 to-pink-600 h-8 w-8 md:h-10 md:w-10 flex-shrink-0 flex items-center justify-center text-white shadow-md">
-              <svg
-                width="16"
-                height="16"
-                viewBox="0 0 24 24"
-                fill="currentColor"
-                className="md:w-5 md:h-5"
-              >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" className="md:w-5 md:h-5">
                 <circle cx="7" cy="7" r="2" />
                 <circle cx="17" cy="7" r="2" />
                 <circle cx="7" cy="17" r="2" />
@@ -288,38 +278,17 @@ export default function ChatPage() {
               </svg>
             </div>
             <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-md px-3 py-3 md:px-5 md:py-4 flex gap-1.5 border border-white">
-              <span
-                className="w-2 h-2 bg-orange-500 rounded-full animate-bounce"
-                style={{ animationDelay: "0ms" }}
-              ></span>
-              <span
-                className="w-2 h-2 bg-pink-500 rounded-full animate-bounce"
-                style={{ animationDelay: "150ms" }}
-              ></span>
-              <span
-                className="w-2 h-2 bg-orange-500 rounded-full animate-bounce"
-                style={{ animationDelay: "300ms" }}
-              ></span>
+              <span className="w-2 h-2 bg-orange-500 rounded-full animate-bounce" style={{ animationDelay: "0ms" }}></span>
+              <span className="w-2 h-2 bg-pink-500 rounded-full animate-bounce" style={{ animationDelay: "150ms" }}></span>
+              <span className="w-2 h-2 bg-orange-500 rounded-full animate-bounce" style={{ animationDelay: "300ms" }}></span>
             </div>
           </div>
         )}
       </div>
 
-      {/* Input Bar */}
       <div className="bg-white/90 backdrop-blur-md border border-orange-200 rounded-xl md:rounded-2xl shadow-lg flex items-end">
-        <button
-          className="p-2.5 md:p-3 text-gray-400 hover:text-orange-600 hover:bg-orange-50 rounded-l-xl md:rounded-l-2xl transition-all duration-300 flex-shrink-0"
-          title="Attach file"
-          type="button"
-        >
-          <svg
-            width="20"
-            height="20"
-            viewBox="0 0 20 20"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.5"
-          >
+        <button className="p-2.5 md:p-3 text-gray-400 hover:text-orange-600 hover:bg-orange-50 rounded-l-xl md:rounded-l-2xl transition-all duration-300 flex-shrink-0" title="Attach file" type="button">
+          <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5">
             <path d="M14 7v5a4 4 0 01-8 0V5a3 3 0 016 0v7a2 2 0 01-4 0V7" />
           </svg>
         </button>
@@ -334,19 +303,8 @@ export default function ChatPage() {
         />
 
         <div className="flex items-center gap-1 pr-2 md:pr-3">
-          <button
-            className="p-2 md:p-2.5 text-gray-400 hover:text-orange-600 hover:bg-orange-50 rounded-lg transition-all duration-300 flex-shrink-0"
-            title="Voice input"
-            type="button"
-          >
-            <svg
-              width="20"
-              height="20"
-              viewBox="0 0 20 20"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.5"
-            >
+          <button className="p-2 md:p-2.5 text-gray-400 hover:text-orange-600 hover:bg-orange-50 rounded-lg transition-all duration-300 flex-shrink-0" title="Voice input" type="button">
+            <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5">
               <rect x="8" y="2" width="4" height="10" rx="2" />
               <path d="M5 9v1a5 5 0 0010 0V9" />
               <line x1="10" y1="15" x2="10" y2="18" />
